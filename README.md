@@ -38,16 +38,26 @@
 
 - **LLM 迁移**：Gemini → DeepSeek，调整【configuration.py 中的模型接入方式 / 参数】
 - **搜索迁移**：Google Search → Tavily，重写【utils.py 中的搜索封装】
-- **结构化输出兼容性修复**：【描述问题现象 → 原因 → 你的解决方案】
 
-踩坑实录（迁移到 DeepSeek 时真实遇到的问题）：
+踩坑实录
+错误 ：OpenAI 400 —— 结构化输出的 API 兼容性
+现象：修完错误 5 后第一次真正调到大模型，generate_query 节点报：
 
-1. 【问题现象，如：按 Pydantic Schema 要求结构化输出时 DeepSeek 返回格式不稳定/报错】
-   → 【原因分析】
-   → 【解决方案，如：调整 Schema 字段类型 / 换用 JSON 模式 / 加 prompt 约束】
-2. 【第二个问题，同上格式】
+OpenAIInvalidRequestError: Error code: 400 - {'error': {'message': 'This response_format type is unavailable...
+排查过程：这个报错有两个关键信息。第一，是 400 不是 401——400 是参数错误、401 是认证失败，所以反而证明了 DeepSeek API Key 是有效的，请求已经到达了对方服务器；第二，报错明说了 “This response_format type is unavailable”——问题出在请求里的 response_format 参数。
 
-> 写 2~3 个就够，每个都按「现象 → 原因 → 解决」三段式。
+原因：graph.py 里有 llm.with_structured_output(SearchQueryList)，作用是强制 LLM 按预定义的 Pydantic 模型输出结构化 JSON。新版 langchain-openai 默认用 json_schema 方式实现（在请求里带 response_format: {"type": "json_schema"}，让服务端按 JSON Schema 硬约束输出）。OpenAI 官方支持这种方式，但 DeepSeek 的兼容接口只支持 function calling 和 json_object，不支持 json_schema，所以直接拒绝请求。
+
+解决：给两处结构化输出调用显式指定方式：
+
+
+# generate_query 里
+structured_llm = llm.with_structured_output(SearchQueryList, method="function_calling")
+
+# reflection 里（不改的话跑到这一步还会栽进同一个坑）
+result = llm.with_structured_output(Reflection, method="function_calling").invoke(formatted_prompt)
+function_calling 的原理：把 Pydantic 模型注册成一个“工具”，让模型以函数参数的形式返回结构化 JSON——DeepSeek 明确支持这个协议，效果等价。
+
 
 ## 本地运行
 
