@@ -36,22 +36,25 @@
 
 相比原模板的主要改动：
 
-- **LLM 迁移**：LLM 迁移：Gemini → DeepSeek。新增 get_llm() 统一封装 ChatOpenAI 客户端
-（base_url 指向 api.deepseek.com），三个节点默认模型均改为 deepseek-chat
-- **搜索迁移**：Google 原生 grounding 搜索 → Tavily REST API。重写 web_research
-节点：Tavily 检索 → DeepSeek 基于结果撰写带 [n] 标注的研究笔记 →
-[n] 替换为带域名的引用链接，兼容原版 finalize_answer 的链接还原逻辑
+- **LLM 迁移**：Gemini → DeepSeek。新增 `get_llm()` 统一封装 ChatOpenAI 客户端
+  （base_url 指向 api.deepseek.com），三个节点默认模型均为 deepseek-chat
+- **搜索迁移**：Google 原生 grounding 搜索 → Tavily REST API。重写 `web_research`
+  节点：Tavily 检索 → DeepSeek 基于结果撰写带 [n] 标注的研究笔记 → [n] 替换为
+  带域名的引用链接，兼容原版 finalize_answer 的链接还原逻辑
 
-踩坑实录
-错误 ：OpenAI 400 —— 结构化输出的 API 兼容性
-现象：修完错误 5 后第一次真正调到大模型，generate_query 节点报：
+## 踩坑实录
 
-OpenAIInvalidRequestError: Error code: 400 - {'error': {'message': 'This response_format type is unavailable...
-排查过程：这个报错有两个关键信息。第一，是 400 不是 401——400 是参数错误、401 是认证失败，所以反而证明了 DeepSeek API Key 是有效的，请求已经到达了对方服务器；第二，报错明说了 “This response_format type is unavailable”——问题出在请求里的 response_format 参数。
+### 错误 1：OpenAI 400 —— 结构化输出的 API 兼容性
 
-原因：graph.py 里有 llm.with_structured_output(SearchQueryList)，作用是强制 LLM 按预定义的 Pydantic 模型输出结构化 JSON。新版 langchain-openai 默认用 json_schema 方式实现（在请求里带 response_format: {"type": "json_schema"}，让服务端按 JSON Schema 硬约束输出）。OpenAI 官方支持这种方式，但 DeepSeek 的兼容接口只支持 function calling 和 json_object，不支持 json_schema，所以直接拒绝请求。
+**现象**：generate_query 节点报：
 
-解决：给两处结构化输出调用显式指定方式：
+`OpenAIInvalidRequestError: Error code: 400 - {'error': {'message': 'This response_format type is unavailable...`
+
+**排查过程**：两个关键信息。第一，是 400 不是 401——400 是参数错误、401 是认证失败，所以反而证明了 DeepSeek API Key 有效，请求已到达对方服务器；第二，报错明说 "This response_format type is unavailable"——问题出在请求里的 `response_format` 参数。
+
+**原因**：`graph.py` 里的 `llm.with_structured_output(SearchQueryList)` 用于强制 LLM 按 Pydantic 模型输出结构化 JSON。新版 langchain-openai 默认用 json_schema 方式实现（请求里带 `response_format: {"type": "json_schema"}`，由服务端硬约束输出）。OpenAI 官方支持，但 DeepSeek 的兼容接口只支持 function calling 和 json_object，不支持 json_schema，所以直接拒绝。
+
+**解决**：给两处结构化输出显式指定方式：
 
 
 # generate_query 里
