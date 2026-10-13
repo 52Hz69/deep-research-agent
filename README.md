@@ -36,8 +36,11 @@
 
 相比原模板的主要改动：
 
-- **LLM 迁移**：Gemini → DeepSeek，调整【configuration.py 中的模型接入方式 / 参数】
-- **搜索迁移**：Google Search → Tavily，重写【utils.py 中的搜索封装】
+- **LLM 迁移**：LLM 迁移：Gemini → DeepSeek。新增 get_llm() 统一封装 ChatOpenAI 客户端
+（base_url 指向 api.deepseek.com），三个节点默认模型均改为 deepseek-chat
+- **搜索迁移**：Google 原生 grounding 搜索 → Tavily REST API。重写 web_research
+节点：Tavily 检索 → DeepSeek 基于结果撰写带 [n] 标注的研究笔记 →
+[n] 替换为带域名的引用链接，兼容原版 finalize_answer 的链接还原逻辑
 
 踩坑实录
 错误 ：OpenAI 400 —— 结构化输出的 API 兼容性
